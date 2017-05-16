@@ -27,7 +27,11 @@ class RBMachine(object):
     def build_model(self):
         self._v_biases = np.zeros([self._input_dim])
         self._h_biases = np.zeros([self._hidden_dim])
-        self._vh_weights = np.random.randn(self._input_dim, self._hidden_dim)
+
+        # use xavier init
+        bound = 4.0 * np.sqrt(6. / (self._input_dim + self._hidden_dim))
+        self._vh_weights = np.random.uniform(low = -bound, high = bound,
+                                             size=[self._input_dim, self._hidden_dim])
 
     def visible_to_hidden_probs(self, visible_state):
         hidden_probs = sigmoid(visible_state.dot(self._vh_weights) + self._h_biases)
@@ -37,37 +41,44 @@ class RBMachine(object):
         visible_probs = sigmoid(hidden_state.dot(self._vh_weights.T) + self._v_biases)
         return visible_probs
 
-    def gibbs_v2h(self, v_probs):
-        v = sample_bin_from_prob(v_probs)
+    def gibbs_v2h(self, v):
         h_probs = self.visible_to_hidden_probs(v)
-        return v, h_probs
-
-    def gibbs_h2v(self, h_probs):
         h = sample_bin_from_prob(h_probs)
-        v_probs = self.hidden_to_visible_probs(h)
-        return h, v_probs
+        return h_probs, h
 
-    def gibbs_hvh(selfs, h_probs):
-        h, v_probs = selfs.gibbs_h2v(h_probs)
-        v, h_probs = selfs.gibbs_v2h(v_probs)
-        return h, v, h_probs
+    def gibbs_h2v(self, h):
+        v_probs = self.hidden_to_visible_probs(h)
+        v = sample_bin_from_prob(v_probs)
+        return v_probs, v
+
+    def gibbs_hvh(selfs, h):
+        v_probs, v = selfs.gibbs_h2v(h)
+        h_probs, h = selfs.gibbs_v2h(v)
+        return v_probs, v, h_probs, h
+
+    def gibbs_vhv(selfs, v):
+        h_probs, h = selfs.gibbs_v2h(v)
+        v_probs, v = selfs.gibbs_h2v(h)
+
+        return h_probs, h, v_probs, v
 
     def cdk(self, visible_state, cd_steps = 1, persistent = None):
         # since visibale_state can be image intensity which has value in [0,1]
         # we sample a binary value from it
-        v0, h0_probs = self.gibbs_v2h(visible_state)
-        h0 = None
-        v  = None
-        if persistent is None:
-            h_probs = h0_probs
-        else:
-            h_probs = persistent
+        v0 = sample_bin_from_prob(visible_state)
 
+        h0_probs, h0 = self.gibbs_v2h(v0)
+
+        # fantasy particle either start from h0 or persistent
+        if persistent is None:
+            h = h0
+        else:
+            h = persistent
+
+        v = None
         for i in range(cd_steps):
-            h, v, h_probs = self.gibbs_hvh(h_probs)
-            if (i==0):
-                h0 = h
-        h = sample_bin_from_prob(h_probs)
+            v_probs, v, h_probs, h = self.gibbs_hvh(h)
+
 
         dW_vh_0, db_v_0, db_h_0 = goodness_grad(v0, h0)
         dW_vh_k, db_v_k, db_h_k = goodness_grad(v, h)
@@ -103,9 +114,11 @@ class RBMachine(object):
         persisten = None
         for i in range(epochs):
             for batch_data in self.get_batches(train_data, batch_size):
-                persisten = self.step(batch_data, learning_rate, cd_steps = cd_steps, persistent = persisten)
-                if not use_pcd:
-                    persisten = None
+                if use_pcd:
+                    persisten = self.step(batch_data, learning_rate, cd_steps=cd_steps, persistent=persisten)
+                else:
+                    _ = self.step(batch_data, learning_rate, cd_steps=cd_steps)
+
                 steps += 1
                 if steps % prive_every == 0:
                     loss = self.loss(validation_data)
@@ -120,12 +133,8 @@ class RBMachine(object):
         return np.mean(np.square(validation_data - v1_probs))
 
     def sample(self, v0_prob, num_gibbs_step = 500):
-        v_prob = v0_prob
-        h_prob = None
+        v0 = sample_bin_from_prob(v0_prob)
 
-        v = None
-        h = None
         for i in range(num_gibbs_step):
-            v, h_prob = self.gibbs_v2h(v_prob)
-            h, v_prob = self.gibbs_h2v(h_prob)
-        return v, v_prob
+            h_probs, h, v_probs, v = self.gibbs_vhv(v0)
+        return v_probs, v
