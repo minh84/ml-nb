@@ -1,7 +1,7 @@
 import numpy as np
 import sys
 
-from .funcs import sigmoid
+from .funcs import sigmoid, softmax
 
 def sample_bin_from_prob(probs):
     output = (np.random.uniform(size=probs.shape) < probs).astype(probs.dtype)
@@ -32,6 +32,11 @@ class RBMachine(object):
         bound = 4.0 * np.sqrt(6. / (self._input_dim + self._hidden_dim))
         self._vh_weights = np.random.uniform(low = -bound, high = bound,
                                              size=[self._input_dim, self._hidden_dim])
+
+        # use momentum
+        self._momentum_dv   = np.zeros_like(self._v_biases)
+        self._momentum_dh   = np.zeros_like(self._h_biases)
+        self._momentum_dWvh = np.zeros_like(self._vh_weights)
 
     def visible_to_hidden_probs(self, visible_state):
         hidden_probs = sigmoid(visible_state.dot(self._vh_weights) + self._h_biases)
@@ -92,32 +97,42 @@ class RBMachine(object):
 
         return dW_vh, db_v, db_h, persistent
 
-    def step(self, batch_data, learning_rate, cd_steps = 1, persistent = None):
+    def step(self, batch_data, learning_rate, cd_steps = 1, persistent = None, use_momentum = True):
         dW_vh, db_v, db_h, persistent = self.cdk(batch_data, cd_steps = cd_steps, persistent = persistent)
 
-        self._v_biases += learning_rate * db_v
-        self._h_biases += learning_rate * db_h
-        self._vh_weights += learning_rate * dW_vh
+        if use_momentum:
+            self._momentum_dv = 0.9 * self._momentum_dv + db_v
+            self._momentum_dh = 0.9 * self._momentum_dh + db_h
+            self._momentum_dWvh = 0.9 * self._momentum_dWvh + dW_vh
+        else:
+            self._momentum_dv   = db_v
+            self._momentum_dh   = db_h
+            self._momentum_dWvh = dW_vh
+
+        self._v_biases += learning_rate * self._momentum_dv
+        self._h_biases += learning_rate * self._momentum_dh
+        self._vh_weights += learning_rate * self._momentum_dWvh
 
         return persistent
 
-    def get_batches(self, train_data, batch_size):
-        N = train_data.shape[0]
+    def get_batch_indices(self, N, batch_size):
         idx = np.arange(N)
         nb_batch = N // batch_size
         np.random.shuffle(idx)
         for i in range(nb_batch):
-            yield train_data[idx[i*batch_size: (i+1)*batch_size]]
+            yield idx[i*batch_size: (i+1)*batch_size]
 
     def train(self, train_data, validation_data, epochs, batch_size, learning_rate = 1e-3, prive_every=50, cd_steps = 1, use_pcd = False):
         steps = 0
         persisten = None
+        N = train_data.shape[0]
         for i in range(epochs):
-            for batch_data in self.get_batches(train_data, batch_size):
+            for batch_idx in self.get_batch_indices(N, batch_size):
+                batch_data = train_data[batch_idx]
                 if use_pcd:
-                    persisten = self.step(batch_data, learning_rate, cd_steps=cd_steps, persistent=persisten)
+                    persisten = self.step(batch_data, learning_rate, cd_steps=cd_steps, persistent=persisten, use_momentum = False)
                 else:
-                    _ = self.step(batch_data, learning_rate, cd_steps=cd_steps)
+                    _ = self.step(batch_data, learning_rate, cd_steps=cd_steps, use_momentum = True)
 
                 steps += 1
                 if steps % prive_every == 0:
@@ -138,3 +153,55 @@ class RBMachine(object):
         for i in range(num_gibbs_step):
             h_probs, h, v_probs, v = self.gibbs_vhv(v0)
         return v_probs, v
+
+    def sample_from_h(self, h0_prob, num_gibbs_step = 500):
+        h0 = sample_bin_from_prob(h0_prob)
+
+        for i in range(num_gibbs_step):
+            v_probs, v, h_probs, h = self.gibbs_hvh(h0)
+        return v_probs, v
+
+    def train_classification(self, train_data, train_label, valid_data, valid_label,
+                             epochs, batch_size, learning_rate = 1e-3, print_every = 50):
+        N, num_class = train_label.shape
+        Wout = np.random.randn(self._hidden_dim, num_class) * np.sqrt(self._hidden_dim)
+        bout = np.zeros([num_class])
+        steps = 0
+        train_rep = self.visible_to_hidden_probs(train_data)
+        valid_rep = self.visible_to_hidden_probs(valid_data)
+        nb_epochs = epochs//20
+
+        momentum_W = np.zeros_like(Wout)
+        momentum_b = np.zeros_like(bout)
+        for i in range(epochs):
+            for batch_idx in self.get_batch_indices(N, batch_size):
+                h_rep = train_rep[batch_idx]
+                label_data = train_label[batch_idx]
+
+                # compute logits & class_probs
+                logits = np.dot(h_rep, Wout) + bout
+                class_probs = softmax(logits)
+
+                # compute loss
+                loss = - np.mean(np.sum(np.log(class_probs + 1e-10) * label_data, axis=1))
+                # compute gradient
+                dloss_dlogits = (class_probs - label_data) / batch_size   # shape: batch_size x num_class
+                dloss_dWout = np.dot(h_rep.T, dloss_dlogits)              # shape: hidden_dim x num_class
+                dloss_dbout = np.mean(dloss_dlogits, axis=0)
+
+                # update weights
+                momentum_W = 0.9 * momentum_W + dloss_dWout
+                momentum_b = 0.9 * momentum_b + dloss_dbout
+                Wout -= learning_rate*momentum_W
+                bout -= learning_rate*momentum_b
+
+                steps+=1
+                if (steps % print_every == 0):
+                    logits = np.dot(valid_rep, Wout) + bout
+                    preds = np.argmax(logits, axis=1)
+                    accuracy = np.mean(preds == np.argmax(valid_label, axis=1))
+                    sys.stdout.write("\rEpoch ({:>4d}/{:4d})".format(i + 1, epochs)
+                                     + "Step {:>6d} Loss {:>6.4f} Accuracy {:.2f}%".format(steps, loss, 100.0 * accuracy))
+
+            if (i==0) or ((i+1) % nb_epochs == 0):
+                print("\n")
