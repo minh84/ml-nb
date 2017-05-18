@@ -1,0 +1,11 @@
++++
+date          = "2017-05-18"
+title         = "Linear Regression part 1"
+type          = "subblog"
+showonlyimage = true
+draft         = false
+author        = "Minh VU"
+image         = "img/ln_reg_p01_logo.png"
+description   = "Linear regression is one of the most basic ML algorithm but it's still very popular. This blog gives an introduction to linear regression."
++++
+

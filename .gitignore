@@ -27,3 +27,6 @@ wheels/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# generated html
+.html

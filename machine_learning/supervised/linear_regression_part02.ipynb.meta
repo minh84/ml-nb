@@ -1,0 +1,11 @@
++++
+date          = "2017-05-18"
+title         = "Linear Regression part 2"
+type          = "subblog"
+showonlyimage = true
+draft         = false
+author        = "Minh VU"
+image         = "img/ln_reg_p02_logo.png"
+description   = "We continue to look at linear regression, this blog walks you though the Normal equation and coefficients' confident interval. We also look at regualized linear regression with maximum-a-posteriori."
++++
+

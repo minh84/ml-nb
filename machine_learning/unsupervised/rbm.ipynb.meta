@@ -1,0 +1,11 @@
++++
+date          = "2017-05-18"
+title         = "Restricted Boltzmann Machine"
+type          = "subblog"
+showonlyimage = true
+draft         = false
+author        = "Minh VU"
+image         = "img/rbm_logo.png"
+description   = "Restricted Bolztmann Machine is an unsupervised neural network that allows we learn distribution of binary state vector from unlabled data. This can be considered as pretraining for Deep Neural Net."
++++
+
