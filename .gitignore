@@ -30,3 +30,6 @@ wheels/
 
 # generated html
 .html
+
+# pycharm files
+.idea
