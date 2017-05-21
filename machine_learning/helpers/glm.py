@@ -1,49 +1,31 @@
 import numpy as np
-from .funcs import sigmoid, get_batch_indices
+from .funcs import sigmoid
+from .train import SgdMomentum, solve
 
 class Glm(object):
     def __init__(self):
         self._thetas = None
 
+    def init_thetas(self, thetas):
+        self._thetas = thetas
+
+    def step(self, dtheta):
+        self._thetas += dtheta
+
     def fit(self, train_X, train_y, val_X, val_y,
             batch_size, epochs, learning_rate = 1e-3, debug=False):
-        # get number of sample and input dimension
-        N, input_dim = train_X.shape
-        nb_batches = N // batch_size
 
         # add intercept
-        train_X = np.hstack([np.ones([N, 1]), train_X])
+        train_X = np.hstack([np.ones([train_X.shape[0], 1]), train_X])
         val_X = np.hstack([np.ones([val_X.shape[0], 1]), val_X])
-        input_dim += 1
+        input_dim = train_X.shape[1]
 
         # initialized by a random-normal
-        self._thetas = np.random.randn(input_dim)
-        self._momentum = np.zeros_like(self._thetas)
-        self._dbg_loss = None
-        # if debug on, we store loss
-        if debug:
-            self._dbg_loss = []
+        thetas_0 = np.random.randn(input_dim)
+        optimizer = SgdMomentum(learning_rate=learning_rate)
 
-        # iteratively update theta
-        for e in range(epochs):
-            for idx in get_batch_indices(N, batch_size):
-                # get batch data
-                batch_X = train_X[idx]
-                batch_y = train_y[idx]
-
-                # sgd update
-                self._step(batch_X, batch_y, learning_rate)
-                if debug:
-                    train_err = self.error(batch_X, batch_y)
-                    val_err = self.error(val_X, val_y)
-                    self._dbg_loss.append([train_err, val_err])
-
-    def _step(self, batch_X, batch_y, learning_rate):
-        _, dtheta = self(batch_X, batch_y)
-
-        # use sgd with momentum
-        self._momentum = 0.9 * self._momentum + dtheta
-        self._thetas = self._thetas - learning_rate * self._momentum
+        self._dbg_loss = solve(self, optimizer, thetas_0, train_X, train_y,
+                               val_X, val_y, batch_size, epochs, debug = debug)
 
     def __call__(self, batch_X, batch_y):
         raise Exception('must be implemented in derived class')
