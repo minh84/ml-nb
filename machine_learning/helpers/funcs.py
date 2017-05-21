@@ -17,3 +17,10 @@ def softmax(x):
     x = np.exp(x - np.max(x, axis=1, keepdims=True))
     out = x / np.sum(x, axis=1, keepdims=True)
     return out
+
+def get_batch_indices(N, batch_size):
+    idx = np.arange(N)
+    nb_batch = N // batch_size
+    np.random.shuffle(idx)
+    for i in range(nb_batch):
+        yield idx[i*batch_size: (i+1)*batch_size]
