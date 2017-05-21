@@ -1,6 +1,7 @@
 import numpy as np
 from .funcs import sigmoid
-from .train import SgdMomentum, solve
+from .sgd import Sgd, SgdMomentum
+from .solver import solve
 
 class Glm(object):
     def __init__(self):
@@ -13,7 +14,9 @@ class Glm(object):
         self._thetas += dtheta
 
     def fit(self, train_X, train_y, val_X, val_y,
-            batch_size, epochs, learning_rate = 1e-3, debug=False):
+            epochs, batch_size,
+            learning_rate = 1e-3, solver = 'SgdMomentum',
+            debug=False):
 
         # add intercept
         train_X = np.hstack([np.ones([train_X.shape[0], 1]), train_X])
@@ -22,10 +25,15 @@ class Glm(object):
 
         # initialized by a random-normal
         thetas_0 = np.random.randn(input_dim)
-        optimizer = SgdMomentum(learning_rate=learning_rate)
+        if solver == 'Sgd':
+            optimizer = Sgd(learning_rate=learning_rate)
+        elif solver == 'SgdMomentum':
+            optimizer = SgdMomentum(learning_rate=learning_rate)
+        else:
+            raise Exception('Unknown solver {}'.format(solver))
 
-        self._dbg_loss = solve(self, optimizer, thetas_0, train_X, train_y,
-                               val_X, val_y, batch_size, epochs, debug = debug)
+        self._dbg_loss = solve(self, optimizer, thetas_0, train_X, train_y, val_X, val_y,
+                               epochs = epochs, batch_size = batch_size, debug = debug)
 
     def __call__(self, batch_X, batch_y):
         raise Exception('must be implemented in derived class')
@@ -58,8 +66,9 @@ class Lsm(Glm):
         return x.dot(self._thetas)
 
 class LogitReg(Glm):
-    def __init__(self):
+    def __init__(self, reg = 1e-3):
         super(LogitReg, self).__init__()
+        self._reg = reg
 
     def error(self, batch_X, batch_y):
         h_theta = self.hypothesis(batch_X)
@@ -75,6 +84,10 @@ class LogitReg(Glm):
         h_theta = self.hypothesis(batch_X)
         loss = - np.mean(np.log(h_theta) * batch_y + np.log(1.0 - h_theta) * batch_y)
         dtheta = np.dot(batch_X.T, (h_theta - batch_y)) / batch_size
+
+        # add regularisation
+        loss += 0.5 * self._reg * np.sum(np.shape(self._thetas))
+        dtheta += self._reg * self._thetas
 
         return loss, dtheta
 
