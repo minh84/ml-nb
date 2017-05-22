@@ -13,18 +13,19 @@ class Glm(object):
     def step(self, dtheta):
         self._thetas += dtheta
 
-    def fit(self, train_X, train_y, val_X, val_y,
-            epochs, batch_size,
-            learning_rate = 1e-3, solver = 'SgdMomentum',
+    def fit(self, train_X, train_y, val_X, val_y, epochs, batch_size,
+            learning_rate = 1e-3, solver = 'SgdMomentum', use_intercept = True,
             debug=False):
 
         # add intercept
-        train_X = np.hstack([np.ones([train_X.shape[0], 1]), train_X])
-        val_X = np.hstack([np.ones([val_X.shape[0], 1]), val_X])
-        input_dim = train_X.shape[1]
+        if use_intercept:
+            train_X = np.hstack([np.ones([train_X.shape[0], 1]), train_X])
+            val_X = np.hstack([np.ones([val_X.shape[0], 1]), val_X])
 
-        # initialized by a random-normal
+        # initialized theta0 by a random-normal
+        input_dim = train_X.shape[1]
         thetas_0 = np.random.randn(input_dim)
+
         if solver == 'Sgd':
             optimizer = Sgd(learning_rate=learning_rate)
         elif solver == 'SgdMomentum':
