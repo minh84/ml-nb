@@ -20,4 +20,6 @@ deploy_one_nb() {
 deploy_one_nb "machine_learning/index.ipynb" "blog/machine_learning.md"
 deploy_one_nb "machine_learning/supervised/linear_regression_part01.ipynb" "blog/machine_learning/supervised/linear_regression_part01.md"
 deploy_one_nb "machine_learning/supervised/linear_regression_part02.ipynb" "blog/machine_learning/supervised/linear_regression_part02.md"
+deploy_one_nb "machine_learning/supervised/binary_classification_logistic.ipynb" "blog/machine_learning/supervised/binary_classification_logistic.md"
+
 deploy_one_nb "machine_learning/unsupervised/rbm.ipynb" "blog/machine_learning/unsupervised/rbm.md"

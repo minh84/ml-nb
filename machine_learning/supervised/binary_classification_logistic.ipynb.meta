@@ -1,0 +1,11 @@
++++
+date          = "2017-05-22"
+title         = "Binary classfication with Logistic Regression"
+type          = "subblog"
+showonlyimage = true
+draft         = false
+author        = "Minh VU"
+image         = "img/logistic_reg_logo.png"
+description   = "We start by looking at binary classification using Logistic regression."
++++
+
