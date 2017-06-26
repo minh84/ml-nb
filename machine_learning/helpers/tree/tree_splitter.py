@@ -134,3 +134,9 @@ class Splitter(object):
                                right_loss=right_loss)
         else:
             return None
+
+    def node_value(self, start, end):
+        n_samples = end - start
+        val = np.sum(self._y[self._samples_indices[range(start, end)]]) / n_samples
+        mse = np.mean(np.square(self._y[self._samples_indices[range(start, end)]] - val))
+        return n_samples, val, mse

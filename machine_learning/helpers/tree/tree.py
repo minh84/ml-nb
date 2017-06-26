@@ -1,19 +1,29 @@
 import numpy as np
 import collections
 from .tree_loss import TreeRegressionLoss
-from .tree_splitter import Splitter, SplitRecord
+from .tree_splitter import Splitter
 
 class Node(object):
-    def __init__(self, feat_idx, split_level):
+    def __init__(self, feat_idx, split_level, n_samples, value, mse):
         self._feat_idx    = feat_idx
         self._split_level = split_level
+        self._n_samples = n_samples
+        self._value = value
+        self._mse = mse
 
         self._left_child  = None
         self._right_child = None
 
     def __str__(self):
-        return '({:d}, {:f}) left[{}] right[{}]'.format(self._feat_idx, self._split_level,
-                                                            self._left_child, self._right_child)
+        retval= '(sample={:d}, value={:.4f}, mse={:.4f}) split=({},{})'.format(self._n_samples, self._value,
+                                                                           self._mse, self._feat_idx, self._split_level)
+        if self._left_child is not None:
+            retval += ' left-child[{}]'.format(self._left_child)
+
+        if self._right_child is not None:
+            retval += ' right-child[{}]'.format(self._right_child)
+
+        return retval
 
 def compute_split_node(splitter, start, end, depth):
     record = splitter.node_split(start, end)
@@ -143,9 +153,20 @@ class RegressorTree(object):
         while not ph.is_empty():
             node_id, split_node, depth = ph.pop_max()
 
-            # get left split
-            left_id, split_left, left_depth    = self.add_split_node(splitter, split_node.start, split_node.pos, depth+1, node_id, True)
-            right_id, split_right, right_depth = self.add_split_node(splitter, split_node.pos, split_node.end, depth+1, node_id, False)
+            # get left & right split
+            left_id, split_left, left_depth    = self.add_split_node(splitter,
+                                                                     split_node.start,
+                                                                     split_node.pos,
+                                                                     depth+1,
+                                                                     node_id,
+                                                                     True)
+
+            right_id, split_right, right_depth = self.add_split_node(splitter,
+                                                                     split_node.pos,
+                                                                     split_node.end,
+                                                                     depth+1,
+                                                                     node_id,
+                                                                     False)
 
             if left_id != -1:
                 ph.push((left_id, split_left, left_depth))
@@ -153,25 +174,56 @@ class RegressorTree(object):
                 ph.push((right_id, split_right, right_depth))
 
     def add_split_node(self, splitter, start, end, depth, parent_id, is_left):
-        if depth >= self._max_depth:
-            return (-1, None, None)
-        # get split node
-        split_node = splitter.node_split(start, end)
-        node_id = -1
+        split_node = None
+        feat_idx = None
+        split_level = None
+        split_node_id = -1
+        n_samples, value, mse = splitter.node_value(start, end)
 
-        if split_node is not None:
-            new_node = Node(split_node.feat_idx, split_node.split_level)
+        if depth < self._max_depth:
+            # get split node
+            split_node = splitter.node_split(start, end)
 
-            node_id = len(self._nodes)
-            self._nodes.append(new_node)
+            if split_node is not None:
+                feat_idx, split_level = split_node.feat_idx, split_node.split_level
+                split_node_id = len(self._nodes)
 
-            if parent_id is not None:
-                if is_left:
-                    self._nodes[parent_id].left_child = node_id
+        # can't compute split-node
+        node_id = len(self._nodes)
+        self._nodes.append(Node(feat_idx, split_level, n_samples, value, mse))
+
+        if parent_id is not None:
+            if is_left:
+                self._nodes[parent_id]._left_child = node_id
+            else:
+                self._nodes[parent_id]._right_child = node_id
+
+        return (split_node_id, split_node, depth)
+
+    def export_graphviz(self, feat_names):
+        retval = '''digraph Tree {
+node [shape=box, style="rounded", color="black", fontname=helvetica] ;
+edge [fontname=helvetica] ;\n'''
+        for i, n in enumerate(self._nodes):
+            node_str = 'mse = {:.4f}<br/>samples = {}<br/>value = {:.4f}'.format(n._mse, n._n_samples, n._value)
+            if n._feat_idx is not None:
+                line = '{} [label=<{} &le; {:.4f}<br/>{}>] ;\n'.format(i, feat_names[n._feat_idx], n._split_level, node_str)
+            else:
+                line = '{} [label=<{}>]\n'.format(i, node_str)
+
+            retval += line
+
+            if n._left_child:
+                if i == 0:
+                    retval += '{} -> {} [labeldistance=2.5, labelangle=45, headlabel="True"] ;\n'.format(i, n._left_child)
                 else:
-                    self._nodes[parent_id].right_child = node_id
-        return (node_id, split_node, depth)
+                    retval += '{} -> {} ;\n'.format(i, n._left_child)
+            if n._right_child:
+                if i == 0:
+                    retval += '{} -> {} [labeldistance=2.5, labelangle=-45, headlabel="False"] ;\n'.format(i, n._right_child)
+                else:
+                    retval += '{} -> {} ;\n'.format(i, n._right_child)
 
+        retval += '}'
 
-
-
+        return retval
